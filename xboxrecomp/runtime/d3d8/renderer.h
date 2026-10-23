@@ -86,6 +86,7 @@ struct GfxState {
     uint32_t stencil_fail = 0x1E00, stencil_zfail = 0x1E00, stencil_pass = 0x1E00;  // GL_KEEP
     int cull = 0;                                                // 0 none, 1 cull clockwise, 2 cull counter-clockwise
     bool scissor = false;
+    bool flat = false;            // a 2D draw (the HUD, menus, screen effects): not interpolated at 120 fps
     GfxRect scissor_rect = {};
 };
 

@@ -17,6 +17,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <thread>
 #include <vector>
 
@@ -36,6 +37,7 @@ struct Waiter {
     u64 ticket;
     int priority;
     bool yielded;  // came from NtYieldExecution: steps aside for any ready thread until a quantum passes
+    u32 thread;    // guest thread object (0: a service thread)
 };
 static std::vector<Waiter> g_waiting;  // threads wanting the guest lock (under g_m)
 static u64 g_next_ticket;
@@ -51,10 +53,12 @@ static u32 g_holder;
 // SuspendThread: a suspended thread parks the next time it takes the guest lock.
 static std::unordered_map<u32, int> g_suspend_count;  // thread object -> count (under g_m)
 static std::unordered_map<u32, int> g_priority;       // thread object -> priority (under g_m)
+static std::unordered_set<u32> g_started;             // threads that have run (under g_m)
 static int priority_of(u32 thread);
 static thread_local u32 t_self;                       // this host thread's guest thread object
 
 void set_guest_thread(u32 thread) { t_self = thread; }
+u32 guest_thread_self() { return t_self; }
 int thread_priority(u32 thread) {
     std::lock_guard<std::mutex> l(g_m);
     return priority_of(thread);
@@ -90,7 +94,8 @@ static void lock_held(std::unique_lock<std::mutex>& l, bool yielded = false) {
     for (;;) {
         u64 t = g_next_ticket++;
         int prio = priority_of(t_self);
-        g_waiting.push_back({t, prio, yielded});
+        g_waiting.push_back({t, prio, yielded, t_self});
+        g_cv.notify_all();  // preempt_for may be waiting to see this thread ready
         g_cv.wait(l, [&] { return !g_held && next_owner() == t; });
         for (auto it = g_waiting.begin(); it != g_waiting.end(); ++it)
             if (it->ticket == t) {
@@ -104,6 +109,7 @@ static void lock_held(std::unique_lock<std::mutex>& l, bool yielded = false) {
             continue;
         }
         g_held = true, g_holder = t_self, g_held_since = std::chrono::steady_clock::now();
+        g_started.insert(t_self);
         for (Waiter& w : g_waiting) w.yielded = false;  // they stepped aside once; now they compete normally
         g_running_priority = prio;
         g_running_since = GetTickCount();
@@ -159,6 +165,23 @@ std::string guest_cpu_report() {  // " thread:ms(priority)" per guest thread tha
 
 void guest_lock() {
     std::unique_lock<std::mutex> l(g_m);
+    lock_held(l);
+}
+
+// The Xbox switches to a thread the moment it becomes ready with a higher priority than the running one (resumed, or
+// its priority raised). The game counts on that order: a job thread made priority 10 and resumed is already waiting on
+// its semaphore when its creator releases it; released first, the game's own waiter count (0x1AA3E0 / 0x1AA460) stays
+// one off and menus draw half-finished frames. Called by the running thread with the guest lock held (under g_m).
+static void preempt_for(Ctx& c, std::unique_lock<std::mutex>& l, u32 thread, bool wait) {
+    if (!thread || thread == t_self || !g_held || g_holder != t_self || ld<u8>(c.fs_base + KPCR_IRQL) >= 2) return;
+    auto ready = [&] {
+        for (const Waiter& w : g_waiting)
+            if (w.thread == thread) return true;
+        return false;
+    };
+    // a resumed host thread takes a moment to queue for the lock; one blocked on an object or suspended never does
+    if (!(wait ? g_cv.wait_for(l, std::chrono::milliseconds(20), ready) : ready()) || priority_of(thread) <= g_running_priority) return;
+    unlock_held();
     lock_held(l);
 }
 
@@ -598,13 +621,15 @@ K(NtResumeThread) {
                 SetEvent(it->second);
                 g_suspended.erase(it);
                 if (arg(c, 1)) st<u32>(arg(c, 1), 1);
+                std::unique_lock<std::mutex> l(g_m);
+                preempt_for(c, l, t, true);
                 return 0;
             }
     }
-    std::lock_guard<std::mutex> l(g_m);
+    std::unique_lock<std::mutex> l(g_m);
     int& n = g_suspend_count[t];
     if (arg(c, 1)) st<u32>(arg(c, 1), u32(n));
-    if (n > 0 && --n == 0) g_cv.notify_all();
+    if (n > 0 && --n == 0) g_cv.notify_all(), preempt_for(c, l, t, true);
     return 0;
 }
 K(NtSuspendThread) {
@@ -623,12 +648,19 @@ K(NtSuspendThread) {
     return 0;
 }
 K(KeSetBasePriorityThread) {  // (thread, increment from the base priority 8); returns the old increment
-    std::lock_guard<std::mutex> l(g_m);
     u32 t = arg(c, 0);
+    bool created_suspended = false;
+    {
+        std::lock_guard<std::mutex> s(g_suspend_lock);
+        for (auto& [thread, event] : g_suspended) created_suspended |= thread == t;
+    }
+    std::unique_lock<std::mutex> l(g_m);
     int old = priority_of(t) - 8, inc = s32(arg(c, 1));
     g_priority[t] = std::max(1, std::min(31, 8 + inc));
+    for (Waiter& w : g_waiting)
+        if (w.thread == t) w.priority = g_priority[t];  // already queued: it competes at the new priority
     if (t == current_thread(c)) g_running_priority = g_priority[t];
-    g_yield_request = 1;  // a waiter may now outrank the running thread
+    else preempt_for(c, l, t, !created_suspended && !g_started.count(t));  // a thread just created runs first if it outranks
     return u32(old);
 }
 K(KeDelayExecutionThread) {

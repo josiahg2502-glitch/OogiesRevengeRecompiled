@@ -134,6 +134,14 @@ static void check(HRESULT hr, const char* what) {
     if (FAILED(hr)) fatal("Direct3D 11: %s failed (%08lX)", what, (unsigned long)hr);
 }
 
+// A driver update, a GPU reset or a graphics switch removes the device: say so instead of freezing on a black window
+static void check_present(HRESULT hr) {
+    if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
+        fatal("The graphics driver stopped responding (Direct3D device %s, %08lX).\nRestart the game; your progress since the "
+              "last save is lost.", hr == DXGI_ERROR_DEVICE_RESET ? "reset" : "removed",
+              (unsigned long)(g_device ? g_device->GetDeviceRemovedReason() : hr));
+}
+
 static bool g_resized;  // the window's client size changed: the swap chain follows at the next present
 static unsigned g_size_changes;  // WM_SIZE count (the menu resizes the swap chain on its own)
 static ID3D11RenderTargetView* g_window_view;  // the swap chain's buffer, at 60 fps
@@ -270,7 +278,12 @@ void gfx_init(uint32_t width, uint32_t height) {
     // [display] fps: 120 draws an in-between picture per game frame (auto: when the screen refreshes at 120 Hz+)
     int fps = std::getenv("OOGIE_FPS") ? std::atoi(std::getenv("OOGIE_FPS")) : config().fps;
     g_display_hz = compositor_hz();
-    g_interp = fps == 120 || (fps == 0 && g_display_hz.load() >= 119);
+    // a 60 Hz screen cannot show the in-between pictures: presenting them anyway held the device in Present and slowed
+    // the game to half speed (4K: 30 fps), so 120 needs a screen of 100 Hz or more (OOGIE_FPS=120 forces it, testing)
+    bool fast_screen = g_display_hz.load() >= 100;
+    g_interp = std::getenv("OOGIE_FPS") ? fps == 120 : (fps == 120 || fps == 0) && fast_screen;
+    if (fps == 120 && !fast_screen && !std::getenv("OOGIE_FPS"))
+        std::fprintf(stderr, "[gfx] 120 fps needs a screen of 100 Hz or more; this one runs at %.0f Hz: 60 fps\n", g_display_hz.load());
     if (g_interp) {
         check(g_device->CreateTexture2D(&bd, nullptr, &g_scene_mid), "in-between texture");
         check(g_device->CreateRenderTargetView(g_scene_mid, nullptr, &g_backbuffer_mid), "in-between view");
@@ -318,7 +331,7 @@ void gfx_clear(uint32_t flags, uint32_t argb, float z, uint32_t stencil, const G
             uint32_t n = count < 16 ? count : 16;
             float s = g_scale, sx = rt_x_scale();  // rects are in game pixels
             for (uint32_t k = 0; k < n; ++k)
-                r[k] = {LONG(rects[k].x1 * sx), LONG(rects[k].y1 * s), LONG(rects[k].x2 * sx), LONG(rects[k].y2 * s)};
+                r[k] = {std::lround(rects[k].x1 * sx), std::lround(rects[k].y1 * s), std::lround(rects[k].x2 * sx), std::lround(rects[k].y2 * s)};
             g_ctx->ClearView(g_rt, color, r, n);
         } else {
             g_ctx->ClearRenderTargetView(g_rt, color);
@@ -506,7 +519,7 @@ void gfx_show_canvas(const uint32_t* bgra, uint32_t w, uint32_t h) {
     DXGI_SWAP_CHAIN_DESC1 sd;
     g_swap->GetDesc1(&sd);
     blit(view, out, float(sd.Width), float(sd.Height), float(w) / float(h));
-    g_swap->Present(1, 0);
+    check_present(g_swap->Present(1, 0));
     out->Release(), out = nullptr;  // the game's own presenting takes over the swap chain afterwards
     if (g_rt) g_ctx->OMSetRenderTargets(1, &g_rt, g_rt_depth);  // the in-game menu: back to the game's target
 }
@@ -560,14 +573,44 @@ static bool draw_in_between() {
     if (before.draws.empty() || now.draws.empty()) return false;
     std::unordered_map<uint64_t, std::vector<int>> pool;  // the frame before's draws by key, in order
     for (int i = 0; i < int(before.draws.size()); ++i) pool[before.draws[i].key].push_back(i);
+    // how far a draw's shader constants (its matrices) moved: the relative change over the registers that differ
+    auto change_of = [&](const Draw& a, const Draw& b) {
+        if (a.consts < 0 || b.consts < 0) return 0.f;
+        const float* x = now.consts[a.consts].data();
+        const float* y = before.consts[b.consts].data();
+        float diff = 0, size = 0;
+        for (int r = 0; r < 768; r += 4) {
+            float dr = 0, sr = 0;
+            for (int k = r; k < r + 4; ++k) dr += std::fabs(x[k] - y[k]), sr += std::fabs(x[k]) + std::fabs(y[k]);
+            if (dr > 0) diff += dr, size += sr;
+        }
+        return size > 0 ? diff / size : 0.f;
+    };
+    std::unordered_map<uint64_t, std::vector<bool>> taken;
     std::unordered_map<uint64_t, size_t> used;
     std::vector<int> match(now.draws.size(), -1);
     size_t matched = 0;
     for (size_t i = 0; i < now.draws.size(); ++i) {
         auto it = pool.find(now.draws[i].key);
         if (it == pool.end()) continue;
-        size_t& u = used[now.draws[i].key];
-        if (u < it->second.size()) match[i] = it->second[u++], ++matched;
+        const std::vector<int>& cand = it->second;
+        if (cand.size() <= 16) {
+            // alike draws (the same skeleton, pumpkin or prop several times) come in the order the game sorts them,
+            // which changes as they move: each takes the one of the frame before that moved least, not the n-th
+            std::vector<bool>& t = taken[now.draws[i].key];
+            t.resize(cand.size());
+            int best = -1;
+            float best_change = 0;
+            for (size_t k = 0; k < cand.size(); ++k) {
+                if (t[k]) continue;
+                float ch = change_of(now.draws[i], before.draws[cand[k]]);
+                if (best < 0 || ch < best_change) best = int(k), best_change = ch;
+            }
+            if (best >= 0) t[best] = true, match[i] = cand[best], ++matched;
+        } else {
+            size_t& u = used[now.draws[i].key];
+            if (u < cand.size()) match[i] = cand[u++], ++matched;
+        }
     }
     if (matched * 2 < now.draws.size()) {
         if (log) std::fprintf(stderr, "[interp] frame %u: only %zu of %zu draws matched\n", g_presents, matched, now.draws.size());
@@ -622,7 +665,9 @@ static bool draw_in_between() {
         const Draw& d = now.draws[c.a];
         // stencil draws are drawn as in this frame: the game builds its shadow volumes anew from each frame's
         // silhouette edges (1700 quads alike), so the n-th quad of two frames is not the same edge
-        const Draw* m = match[c.a] >= 0 && !d.s.stencil ? &before.draws[match[c.a]] : nullptr;
+        // stencil draws and 2D are drawn as in this frame: 2D animates by jumping texture coordinates between
+        // sprite-sheet cells (the HUD's pumpkins), and halfway between two cells is a smear
+        const Draw* m = match[c.a] >= 0 && !d.s.stencil && !d.s.flat ? &before.draws[match[c.a]] : nullptr;
         GfxState s = d.s;
         if (d.consts >= 0) {
             int b = m && m->consts >= 0 ? m->consts : -1;
@@ -676,11 +721,17 @@ static void show(int set, int which) {
     if (!g_shown[set].tex[which] || FAILED(g_swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&buf)))) return;
     D3D11_TEXTURE2D_DESC a, b;
     buf->GetDesc(&a), g_shown[set].tex[which]->GetDesc(&b);
-    if (a.Width == b.Width && a.Height == b.Height) g_ctx->CopyResource(buf, g_shown[set].tex[which]);
+    bool fits = a.Width == b.Width && a.Height == b.Height;
+    if (fits) g_ctx->CopyResource(buf, g_shown[set].tex[which]);
     buf->Release();
+    // the window was just resized (or restored, or made fullscreen) and the pictures not yet: presenting now would
+    // show a buffer nothing was drawn into (white flashes)
+    if (!fits) return;
     // never waits for a free buffer: it would hold the (multithread-protected) device and stall the game's drawing;
     // a picture the screen has no room for is dropped
-    if (g_swap->Present(0, DXGI_PRESENT_DO_NOT_WAIT) != DXGI_ERROR_WAS_STILL_DRAWING) ++g_frames_shown;
+    HRESULT hr = g_swap->Present(0, DXGI_PRESENT_DO_NOT_WAIT);
+    check_present(hr);
+    if (hr != DXGI_ERROR_WAS_STILL_DRAWING) ++g_frames_shown;
     if (!g_output.load()) {  // the display the window is on, for gfx_wait_vblank
         IDXGIOutput* out = nullptr;
         if (SUCCEEDED(g_swap->GetContainingOutput(&out))) g_output = out;
@@ -728,10 +779,34 @@ static void present_in_between() {
                     d.Format = DXGI_FORMAT_B8G8R8A8_UNORM, d.SampleDesc.Count = 1, d.BindFlags = D3D11_BIND_RENDER_TARGET;
                     check(g_device->CreateTexture2D(&d, nullptr, &s.tex[k]), "shown picture");
                     check(g_device->CreateRenderTargetView(s.tex[k], nullptr, &s.rtv[k]), "shown picture view");
+                    const float black[4] = {0, 0, 0, 1};
+                    g_ctx->ClearRenderTargetView(s.rtv[k], black);  // new textures hold anything until drawn into
                 }
         }
     }
-    if (!draw_in_between()) g_ctx->CopyResource(g_scene_mid, g_scene);
+    // The game steps once per vblank, so a frame the GPU cannot finish in time slows the game itself (4K with ray
+    // tracing on an RTX 3060 ran at 30 fps: half speed). In-between pictures double the drawing: while frames come
+    // late they pause (3 s, doubling up to a minute while it keeps happening) and the game keeps its own speed.
+    bool paused;
+    {
+        using namespace std::chrono;
+        static steady_clock::time_point last = steady_clock::now(), paused_until;
+        static int late, on_time, pause_s = 3;
+        auto now = steady_clock::now();
+        double ms = duration<double, std::milli>(now - last).count();
+        last = now;
+        late = ms > 18.5 ? late + 1 : 0;
+        on_time = ms > 18.5 ? 0 : on_time + 1;
+        if (on_time > 600) pause_s = 3;  // 10 s on time: the next pause starts short again
+        if (now >= paused_until && late >= 3) {
+            paused_until = now + seconds(pause_s);
+            static int told;
+            if (told++ < 5) std::fprintf(stderr, "[gfx] in-between frames paused for %d s: frames are late (%.0f ms)\n", pause_s, ms);
+            pause_s = std::min(pause_s * 2, 60);
+        }
+        paused = now < paused_until;
+    }
+    if (paused || !draw_in_between()) g_ctx->CopyResource(g_scene_mid, g_scene);
     else if (g_flat_frame) fill_sides(g_scene_mid, g_backbuffer_mid);
     static int set;
     set ^= 1;
@@ -789,7 +864,7 @@ void gfx_present() {
     if (g_interp) {
         rec::begin_frame();  // the present thread shows this frame; the next one is recorded from here
     } else {
-        g_swap->Present(0, 0);  // the game's own 59.94 Hz vblank paces frames; DWM shows each at the next refresh
+        check_present(g_swap->Present(0, 0));  // the game's own 59.94 Hz vblank paces frames; DWM shows each at the next refresh
         ++g_frames_shown;
         if (!g_output.load()) {  // the display the window is on, for gfx_wait_vblank
             IDXGIOutput* out = nullptr;
@@ -1137,7 +1212,13 @@ int gfx_backbuffer_snapshot() {
     return id;
 }
 
-void gfx_flat_frame(bool flat) { g_flat_frame = flat; }
+// Loading screens and scene changes mix single 2D-only frames with 3D ones: the side fill switching on and off each
+// frame flashed the borders, so it changes only after three frames in a row of the other kind
+void gfx_flat_frame(bool flat) {
+    static int run;
+    run = flat == g_flat_frame ? 0 : run + 1;
+    if (run >= 3) g_flat_frame = flat, run = 0;
+}
 
 // A 2D-only frame on a back buffer wider than 4:3 (menus, title, movies): the 4:3 picture sits in the middle and the
 // sides get the same picture zoomed to cover the screen, heavily blurred (a small mip level) and darkened, the way
@@ -1448,9 +1529,9 @@ void gfx_copy(int src, int dst, const GfxRect* rect, int32_t dst_x, int32_t dst_
         std::fprintf(stderr, "[gfx] wide copy %d -> %d (%ux%u -> %ux%u) rect %d frame %u\n", src, dst, sd.Width, sd.Height,
                      dd.Width, dd.Height, rect ? 1 : 0, g_presents);
     D3D11_BOX box = {0, 0, 0, sd.Width, sd.Height, 1};
-    if (rect) box = {UINT(rect->x1 * ks), UINT(rect->y1 * k), 0, UINT(rect->x2 * ks), UINT(rect->y2 * k), 1};
+    if (rect) box = {UINT(std::lround(rect->x1 * ks)), UINT(std::lround(rect->y1 * k)), 0, UINT(std::lround(rect->x2 * ks)), UINT(std::lround(rect->y2 * k)), 1};
     box.right = std::min(box.right, sd.Width), box.bottom = std::min(box.bottom, sd.Height);
-    UINT x = UINT(dst_x * kd), y = UINT(dst_y * k);
+    UINT x = UINT(std::lround(dst_x * kd)), y = UINT(std::lround(dst_y * k));
     if (x >= dd.Width || y >= dd.Height || box.right <= box.left || box.bottom <= box.top) return;
     box.right = std::min(box.right, box.left + (dd.Width - x)), box.bottom = std::min(box.bottom, box.top + (dd.Height - y));
     g_ctx->CopySubresourceRegion(d, 0, x, y, 0, s, 0, &box);
@@ -1588,8 +1669,10 @@ void gfx_draw(const GfxState& s, int topology, const float* vertices, uint32_t v
     D3D11_VIEWPORT vp = {0, 0, float(g_rt_width), float(g_rt_height), 0, 1};
     if (changed(last_vp, vp)) g_ctx->RSSetViewports(1, &vp);
     if (s.scissor) {
-        D3D11_RECT r = {LONG(s.scissor_rect.x1 * rt_x_scale()), LONG(s.scissor_rect.y1 * g_scale),
-                        LONG(s.scissor_rect.x2 * rt_x_scale()), LONG(s.scissor_rect.y2 * g_scale)};
+        // rounded: 2.25 * 1.3333334 is 2.9999998 in float, and a truncated 640 * that clipped the last column of
+        // every frame at 16:9 1080p and 4K (the light line on the right)
+        D3D11_RECT r = {std::lround(s.scissor_rect.x1 * rt_x_scale()), std::lround(s.scissor_rect.y1 * g_scale),
+                        std::lround(s.scissor_rect.x2 * rt_x_scale()), std::lround(s.scissor_rect.y2 * g_scale)};
         if (changed(last_scissor, r)) g_ctx->RSSetScissorRects(1, &r);
     }
 
@@ -1720,7 +1803,11 @@ int gfx_video_filter(int src) {
         v->Release(), f->Release();
     }
     State& st = states[src];
-    const Texture& in = g_textures[src];
+    // a copy: the textures added below can move g_textures, and a reference into it would then read freed memory
+    // (the d3d11.dll crash about one start in ten, at the first movie)
+    const Texture in = g_textures[src];
+    if (st.out[0] >= 0 && (g_textures[st.out[0]].width != in.width || g_textures[st.out[0]].height != in.height))
+        st = State{};  // the id now holds a plane of another size (another movie): new buffers
     if (st.out[0] < 0)
         for (int* o : {&st.out[0], &st.out[1], &st.last_in}) {  // two cleaned frames and the last raw one
             Texture t = {};

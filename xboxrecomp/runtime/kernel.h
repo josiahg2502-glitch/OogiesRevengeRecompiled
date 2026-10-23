@@ -19,6 +19,7 @@ inline u32 arg(Ctx& c, int i) { return ld<u32>(c.esp + 4 + 4 * i); }
 
 void guest_lock();
 void guest_unlock();
+u32 guest_thread_self();  // this host thread's guest thread object (0: a service thread)
 void set_guest_thread(u32 thread);  // marks a host thread as running this guest thread (scheduling priority)
 int thread_priority(u32 thread);
 std::string guest_slices_since(std::chrono::steady_clock::time_point t0);  // OOGIE_HITCH_TRACE: lock holders since t0

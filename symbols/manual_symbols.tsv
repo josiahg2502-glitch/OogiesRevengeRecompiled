@@ -1,2 +1,5 @@
 # address	library	kind	name	call	params  (functions XbSymbolDatabase does not name; found by hand, see the hooks that use them)
 001e4e86	D3DX8	FUN	D3DXMatrixPerspectiveFovLH	stdcall	psh pOut, psh fovy, psh Aspect, psh zn, psh zf
+00040950	GAME	FUN	StartChapter	cdecl	psh chapter
+00081b90	GAME	FUN	CullTestBox	cdecl	psh object
+00081d50	GAME	FUN	CullTestSphere	cdecl	psh object

@@ -172,6 +172,8 @@ bool g_frame_3d = true, g_last_frame_3d = true;
 // included) have been made; a frame that never gets there goes without (rather than darkening the HUD).
 bool g_occlusion_done;
 u32 g_world_draws, g_last_world_draws;
+u32 g_boundaries, g_last_boundaries;  // 3D-to-2D turns into the back buffer this frame / the frame before
+bool g_3d_since_boundary;
 
 struct ScopedNs {  // adds the scope's duration to a counter
     u64& acc;
@@ -251,10 +253,16 @@ void vblank_thread() {
     auto period = std::chrono::nanoseconds(1000000000ll * 1001 / 60000);  // NTSC 59.94 Hz
     g_next_vblank = std::chrono::steady_clock::now() + period;
     auto last = std::chrono::steady_clock::now();
+    auto distrust_until = last;  // until then the display does not pace the game
     for (;;) {
         // a display that is off or asleep answers WaitForVBlank at once: those "vblanks" would run the game
-        // (one step per vblank) many times too fast, so one sooner than 3/4 of a frame waits for the clock
-        if (gfx_wait_vblank() && std::chrono::steady_clock::now() - last >= period * 3 / 4) {
+        // (one step per vblank) many times too fast, so one sooner than 3/4 of a frame waits for the clock.
+        // Asleep it can also answer at about 30 Hz (the game at half speed): one later than 1.5 frames hands the
+        // pacing to the clock for 2 s, then the display is tried again.
+        bool display = last >= distrust_until && gfx_wait_vblank();
+        auto waited = std::chrono::steady_clock::now() - last;
+        if (display && waited > period * 3 / 2) distrust_until = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        if (display && waited >= period * 3 / 4 && waited <= period * 3 / 2) {
             g_next_vblank = std::chrono::steady_clock::now() + period;
         } else {
             if (g_next_vblank < last + period * 3 / 4) g_next_vblank = last + period;
@@ -371,6 +379,7 @@ HLE(D3DDevice_Swap) {
     }
     gfx_pump();
     g_last_world_draws = g_world_draws, g_world_draws = 0, g_occlusion_done = false;
+    g_last_boundaries = g_boundaries, g_boundaries = 0, g_3d_since_boundary = false;
     gfx_flat_frame(!g_frame_3d);  // a 2D-only frame: the renderer fills the wide sides
     g_last_frame_3d = g_frame_3d, g_frame_3d = false;
     // presentation interval ONE (the game's): the flip waits for a vertical blank, so at most one frame per vblank
@@ -652,6 +661,15 @@ HLE(D3DXMatrixPerspectiveFovLH) {
     return out;
 }
 HLE_REGISTER(D3DXMatrixPerspectiveFovLH)
+// The game's own visibility test (0x81B90 boxes, 0x81D50 spheres, symbols/manual_symbols.tsv) checks objects against
+// the view's half-width at 0x3ECA50, which the camera (0x81E60) sets to 320 / zoom: the 4:3 screen. On a wider picture,
+// scenery and props in the extra width were culled though in view (pumpkins popping at the sides). Set from the
+// half-height (240 / zoom, never widened) times 4/3 and the widening, so calling it again changes nothing.
+static void widen_cull() { st<float>(0x3ECA50, ld<float>(0x3ECA34) * (4.f / 3.f) * gfx_wide()); }
+HLE_BEFORE(CullTestBox) { widen_cull(); }
+HLE_BEFORE_REGISTER(CullTestBox)
+HLE_BEFORE(CullTestSphere) { widen_cull(); }
+HLE_BEFORE_REGISTER(CullTestSphere)
 HLE(D3DDevice_SetViewport) {  // D3DVIEWPORT8 { X, Y, Width, Height, MinZ, MaxZ }
     u32 p = sarg(c, 0);
     float minz, maxz;
@@ -1354,13 +1372,49 @@ void draw(u32 prim, u32 count, u32 start, u32 up_data, u32 up_stride) {
         }
     }
     CompiledVS* vs = vertex_shader();
+    {  // OOGIE_DRAW_LOG=first,count: every draw of those frames, one line each: frame, shader, stage 0 texture data, vertices (testing)
+        static const char* env = std::getenv("OOGIE_DRAW_LOG");
+        static unsigned first, n;
+        if (env && !n) std::sscanf(env, "%u,%u", &first, &n);
+        if (env && g.swap_count >= first && g.swap_count < first + n)
+            std::fprintf(stderr, "[dl] %u vs %08X tex %08X n %u z %u\n", g.swap_count, g.vertex_shader,
+                         g.textures[0] ? ld<u32>(g.textures[0] + 4) : 0, count, rs(0x35C, 1));
+    }
+    static std::string line;  // OOGIE_DRAW_SEQ's
+    {  // OOGIE_DRAW_SEQ=first,count: each frame's draws in order: P 3D (Z writes), p 3D (no Z writes), 2 2D,
+       // s 2D with stencil, A the occlusion pass, t into another target (testing)
+        static const char* seq = std::getenv("OOGIE_DRAW_SEQ");
+        static unsigned first, count;
+        static u32 line_frame = ~0u;
+        if (seq) {
+            if (!count) std::sscanf(seq, "%u,%u", &first, &count);
+            if (line_frame != g.swap_count) {
+                if (!line.empty()) std::fprintf(stderr, "[seq] %u: %s\n", line_frame, line.c_str());
+                line.clear(), line_frame = g.swap_count;
+            }
+            if (g.swap_count >= first && g.swap_count < first + count)
+                line += g.render_target != g.backbuffer ? 't' : !vs || !vs->projects ? (g.stencil_enable ? 's' : '2')
+                        : rs(0x35C, 1) ? 'P' : 'p';
+        }
+    }
     if (vs && g.render_target == g.backbuffer) {
         if (vs->projects) {
-            g_frame_3d = true;
+            g_frame_3d = true, g_3d_since_boundary = true;
             if (rs(0x35C, 1)) ++g_world_draws;  // depth writes on (NV097_SET_DEPTH_MASK)
-        } else if (g_frame_3d && !g_occlusion_done && g_last_world_draws &&
-                   g_world_draws + std::max(4u, g_last_world_draws / 50) >= g_last_world_draws) {
-            gfx_ambient_occlusion(), g_occlusion_done = true;  // the world (characters included) is done
+        } else if (g_frame_3d) {
+            // The occlusion goes in once the world (characters included) is done: at the frame's last turn from 3D to
+            // 2D. The game turns to 2D mid-world too (Town Square: a full-screen pass between two 3D batches), so the
+            // last turn is the one the frame before ended its world at; failing that, where this frame has drawn about
+            // as much world as the last. The count alone missed whenever a fight changed it (one frame in ~130
+            // without the occlusion: a flicker).
+            bool boundary = g_3d_since_boundary && !g.stencil_enable;  // a stencil pass (shadows) is part of the world
+            if (boundary) ++g_boundaries, g_3d_since_boundary = false;
+            bool by_structure = boundary && g_boundaries == g_last_boundaries;
+            bool by_count = g_last_world_draws && g_world_draws + std::max(4u, g_last_world_draws / 50) >= g_last_world_draws;
+            if (!g_occlusion_done && (by_structure || by_count)) {
+                gfx_ambient_occlusion(), g_occlusion_done = true;
+                line += 'A';
+            }
         }
     }
     int ps = pixel_shader();
@@ -1420,6 +1474,7 @@ void draw(u32 prim, u32 count, u32 start, u32 up_data, u32 up_stride) {
     }
 
     GfxState s;
+    s.flat = vs && !vs->projects;
     s.vs = vs->id, s.ps = ps;
     for (int k = 0; k < 4; ++k) s.textures[k] = texture(g.textures[k], s.tscale[k], s.cube[k]);
     s.vs_constants = g.vs_constants, s.vs_version = g.vs_version;
@@ -1520,6 +1575,9 @@ void draw(u32 prim, u32 count, u32 start, u32 up_data, u32 up_stride) {
                          (unsigned long long)n, g.vertex_shader, g.pixel_shader, t0, d.width, d.height, d.format, t0 ? ld<u32>(t0 + 4) : 0,
                          g.render_target, s.blend, s.blend_src, s.blend_dst, s.blend_op, s.z_enable, s.z_write, s.stencil, drs(92), drs(93), count,
                          vs ? int(vs->projects) : -1);
+            std::fprintf(stderr, "[snap] %llu vp %u,%u %ux%u rt %ux%u scissor %d %d,%d-%d,%d\n", (unsigned long long)n, g.vp.x, g.vp.y,
+                         g.vp.w, g.vp.h, g.rt_width, g.rt_height, int(s.scissor), s.scissor_rect.x1, s.scissor_rect.y1, s.scissor_rect.x2,
+                         s.scissor_rect.y2);
             char path[300];
             if (n % step == 0 || (n >= from && n <= to)) {
                 std::snprintf(path, sizeof path, "%s/d%05llu.bmp", dir, (unsigned long long)n);

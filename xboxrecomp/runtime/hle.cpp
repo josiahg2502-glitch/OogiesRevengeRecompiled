@@ -15,7 +15,13 @@ std::vector<std::pair<const char*, HleFn>>& hle_impls() {
     return v;
 }
 
+std::vector<std::pair<const char*, void (*)(Ctx&)>>& hle_befores() {
+    static std::vector<std::pair<const char*, void (*)(Ctx&)>> v;
+    return v;
+}
+
 static std::vector<HleFn> g_impl;  // by symbol index
+static std::vector<void (*)(Ctx&)> g_before;
 static std::vector<bool> g_traced;
 
 bool g_trace_d3d_now;
@@ -28,6 +34,7 @@ static bool hook(Ctx& c, u32 k) {
                      g_impl[k] ? "" : " (original)", ld<u32>(c.esp), a0, ld<u32>(c.esp + 8), ld<u32>(c.esp + 12),
                      ld<u32>(c.esp + 16), ld<u32>(c.esp + 20), ld<u32>(c.esp + 24));
     }
+    if (g_before[k]) g_before[k](c);
     HleFn fn = g_impl[k];
     if (!fn) return false;
     static const bool slow_log = std::getenv("OOGIE_HITCH_TRACE") != nullptr;  // calls that keep the guest lock long (testing)
@@ -72,6 +79,10 @@ const char* xdk_name(u32 addr) {
 void hle_init() {
     g_impl.assign(g_xdk_symbol_count, nullptr);
     g_traced.assign(g_xdk_symbol_count, false);
+    g_before.assign(g_xdk_symbol_count, nullptr);
+    for (auto& [name, fn] : hle_befores())
+        for (unsigned k = 0; k < g_xdk_symbol_count; ++k)
+            if (std::strcmp(g_xdk_symbols[k].name, name) == 0) g_before[k] = fn;
     for (auto& [name, fn] : hle_impls()) {
         bool found = false;
         for (unsigned k = 0; k < g_xdk_symbol_count; ++k)
@@ -84,7 +95,7 @@ void hle_init() {
     for (unsigned k = 0; k < g_xdk_symbol_count; ++k) {
         std::string lib = g_xdk_symbols[k].lib;
         g_traced[k] = libs == "all" || ("," + libs + ",").find("," + lib + ",") != std::string::npos;
-        if (g_impl[k] || g_traced[k]) g_xdk_hook[k] = hook, ++installed;
+        if (g_impl[k] || g_traced[k] || g_before[k]) g_xdk_hook[k] = hook, ++installed;
     }
     std::fprintf(stderr, "[hle] %zu replacements, %u hooks installed (%u named XDK functions)\n", hle_impls().size(),
                  installed, g_xdk_symbol_count);

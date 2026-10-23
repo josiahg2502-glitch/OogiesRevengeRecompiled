@@ -10,6 +10,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "hle.h"
 #include "kernel.h"
 
 constexpr u32 X_STATUS_SUCCESS = 0, X_STATUS_NO_MEMORY = 0xC0000017, X_STATUS_INVALID_PARAMETER = 0xC000000D;
@@ -155,6 +156,17 @@ K(NtFreeVirtualMemory) {  // shortcut: address space is never reused
                      ld<u32>(c.esp));
     return X_STATUS_SUCCESS;
 }
+
+// OOGIE_CHAPTER=n (1-24, testing): NEW GAME starts at chapter n instead of 1 (the game's chapter start, 0x40950,
+// reads each chapter's world and area from its table at 0x2C5AA0); later chapter changes run as the game makes them
+HLE_BEFORE(StartChapter) {
+    static int want = std::getenv("OOGIE_CHAPTER") ? std::atoi(std::getenv("OOGIE_CHAPTER")) : 0;
+    if (want >= 1 && want <= 24 && sarg(c, 0) == 1) {
+        std::fprintf(stderr, "[test] chapter 1 -> %d\n", want);
+        st<u32>(c.esp + 4, u32(want)), want = 0;
+    }
+}
+HLE_BEFORE_REGISTER(StartChapter)
 
 K(XeLoadSection) { return X_STATUS_SUCCESS; }  // every section is loaded up front
 K(XeUnloadSection) { return X_STATUS_SUCCESS; }

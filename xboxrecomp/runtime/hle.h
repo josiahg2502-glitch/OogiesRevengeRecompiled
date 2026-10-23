@@ -13,6 +13,11 @@ typedef u32 (*HleFn)(Ctx&);  // returns eax; hle_hook pops the arguments for the
 #define HLE(name) static u32 hle_##name(Ctx& c)
 #define HLE_REGISTER(name) static const int hle_reg_##name = (hle_impls().push_back({#name, hle_##name}), 0);
 std::vector<std::pair<const char*, HleFn>>& hle_impls();
+// HLE_BEFORE(StartChapter) { ... }  then  HLE_BEFORE_REGISTER(StartChapter): runs at the entry of a named function,
+// which then runs as recompiled (for adjusting its arguments: test switches)
+#define HLE_BEFORE(name) static void hle_before_##name(Ctx& c)
+#define HLE_BEFORE_REGISTER(name) static const int hle_before_reg_##name = (hle_befores().push_back({#name, hle_before_##name}), 0);
+std::vector<std::pair<const char*, void (*)(Ctx&)>>& hle_befores();
 extern bool g_trace_d3d_now;  // while set, every hooked D3D8 call is logged (OOGIE_SNAP's frame)
 
 // i-th stack argument of the call being replaced (esp points at the return address)

@@ -30,8 +30,15 @@ union Mmx {
     u8 b[8];
 };
 
+// Flags live in locals of each generated function: compilers never keep them live across a call. A jump into another
+// function (a tail jump, or into code the analysis split off as its own function) carries them in Ctx::jf.
+struct Flags {
+    u8 cf, zf, sf, of, pf;
+};
+
 struct Ctx {
     u32 eax, ecx, edx, ebx, esp, ebp, esi, edi;
+    Flags jf{};     // the flags at a jump into another function (its first instruction may test them)
     u32 df;         // direction flag
     u32 fs_base;    // guest address of the thread's KPCR (fs:0)
     // x87: double precision is what the Xbox libraries run at (they set PC to 53 bits)
@@ -43,10 +50,6 @@ struct Ctx {
     u32 mxcsr = 0x1F80;
 };
 
-// Flags live in locals of each generated function: MSVC never keeps them live across a call.
-struct Flags {
-    u8 cf, zf, sf, of, pf;
-};
 
 extern u8* g_mem;  // 4 GB host reservation; guest address a lives at g_mem + a
 

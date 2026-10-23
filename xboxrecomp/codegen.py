@@ -171,9 +171,9 @@ class FuncGen:
             if t <= self.insn.address:  # loop back-edge: let other threads in
                 return f"{{ SAFEPOINT(0x{self.insn.address:X}u) goto L_{t:X}; }}"
             return f"goto L_{t:X};"
-        if t in self.p.funcs:
-            return f"{{ sub_{t:X}(c); return; }}"
-        return f"{{ dispatch(c, 0x{t:X}u); return; }}"
+        if t in self.p.funcs:  # the flags go along: the target may begin with a jcc on them
+            return f"{{ c.jf = f; sub_{t:X}(c); return; }}"
+        return f"{{ c.jf = f; dispatch(c, 0x{t:X}u); return; }}"
 
     def call(self, i):
         nxt = i.address + i.size
@@ -356,8 +356,8 @@ class FuncGen:
             tbl = self.p.jump_tables.get(i.address)
             if tbl:
                 cases = " ".join(f"case 0x{t:X}u: {self.goto(t)}" for t in sorted(set(tbl)))
-                return f"switch (u32 t = {self.rd(op, 4)}) {{ {cases} default: dispatch(c, t); return; }}"
-            return f"{{ u32 t = {self.rd(op, 4)}; dispatch(c, t); return; }}"
+                return f"switch (u32 t = {self.rd(op, 4)}) {{ {cases} default: c.jf = f; dispatch(c, t); return; }}"
+            return f"{{ u32 t = {self.rd(op, 4)}; c.jf = f; dispatch(c, t); return; }}"
         if m in ("jecxz", "jcxz"):
             return f"if (c.ecx == 0) {self.goto(ops[0].imm)}"
         if m == "loop":
@@ -629,7 +629,7 @@ class FuncGen:
                 nxt = va + i.size
                 if idx + 1 >= len(order) or order[idx + 1] != nxt:
                     code.append((None, "    " + self.goto(nxt)))
-        out = [f"void sub_{self.start:X}(Ctx& c) {{", "    Flags f{};", f"    SAFEPOINT(0x{self.start:X}u)"]
+        out = [f"void sub_{self.start:X}(Ctx& c) {{", "    Flags f = c.jf;", f"    SAFEPOINT(0x{self.start:X}u)"]
         if self.xdk:
             k, (lib, name, conv, stack) = self.xdk
             out.insert(0, f"// {lib} {name} ({conv}, {stack} bytes of stack arguments)")

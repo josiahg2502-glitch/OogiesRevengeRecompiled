@@ -148,6 +148,10 @@ XbeInfo xbe_load(const char* path) {
     return x;
 }
 
+// Laptops with two GPUs run this on the fast one (the drivers look for these exports in the program)
+extern "C" __declspec(dllexport) DWORD NvOptimusEnablement = 1;
+extern "C" __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+
 int main(int argc, char** argv) {
     // the game folder holds Disc\files (the extracted disc) and UserData (settings, saves, mods): the working
     // directory when it has them (development runs), else the data folder next to this executable (a release)
@@ -182,6 +186,18 @@ int main(int argc, char** argv) {
                      GetCurrentThreadId(), g_boot_thread);
         if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2)
             std::fprintf(stderr, ", %s %p", r->ExceptionInformation[0] ? "writing" : "reading", reinterpret_cast<void*>(r->ExceptionInformation[1]));
+        std::fprintf(stderr, ", guest thread %08X\n[crash] stack:", guest_thread_self());
+        void* frames[40];  // module+offset per frame (build\OogiesRevenge.map names our own)
+        for (USHORT i = 0, n = RtlCaptureStackBackTrace(0, 40, frames, nullptr); i < n; ++i) {
+            HMODULE fm = nullptr;
+            char fn[MAX_PATH] = "?";
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   static_cast<LPCSTR>(frames[i]), &fm))
+                GetModuleFileNameA(fm, fn, sizeof fn);
+            const char* base = std::strrchr(fn, '\\');
+            std::fprintf(stderr, " %s+%llX", base ? base + 1 : fn,
+                         (unsigned long long)(static_cast<const char*>(frames[i]) - reinterpret_cast<const char*>(fm)));
+        }
         std::fprintf(stderr, "\n");
         std::fflush(stderr);
         return EXCEPTION_CONTINUE_SEARCH;

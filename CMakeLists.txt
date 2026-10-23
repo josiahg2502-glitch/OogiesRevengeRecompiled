@@ -25,7 +25,7 @@ target_include_directories(OogiesRevenge PRIVATE xboxrecomp/runtime generated)
 set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} -I ${CMAKE_CURRENT_SOURCE_DIR}")
 # The generated code is huge; -O1 keeps build times sane until profiling says otherwise.
 set_source_files_properties(${GENERATED_SOURCES} PROPERTIES COMPILE_OPTIONS "-O1")
-target_link_options(OogiesRevenge PRIVATE -static -mwindows)  # no console window; stderr goes to UserData/log.txt
+target_link_options(OogiesRevenge PRIVATE -static -mwindows -Wl,-Map=${CMAKE_BINARY_DIR}/OogiesRevenge.map)  # no console window; stderr goes to UserData/log.txt
 target_link_libraries(OogiesRevenge PRIVATE d3d11 dxgi dwmapi user32 gdi32 ole32 winmm shell32 bcrypt comdlg32)
 
 add_executable(flags_test xboxrecomp/tests/flags_test.cpp)
