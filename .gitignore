@@ -21,7 +21,7 @@ __pycache__/
 build2/
 dist/
 UserData/
-screenshots/
+/screenshots/
 *.iso
 launcher/bin/
 launcher/obj/
