@@ -1,0 +1,26 @@
+name: Pull Request Manager
+
+on:
+  pull_request_target:
+
+jobs:
+  pr_manager:
+    name: PR Manager
+    runs-on: ubuntu-latest
+    steps:
+      - name: Labeler
+        uses: actions/labeler@v5
+        with:
+          sync-labels: true
+          dot: false
+
+      - uses: actions/checkout@v4
+        with:
+          # IMPORTANT: Make sure checkout is pulling pull request's merge commit!
+          ref: 'refs/pull/${{ github.event.number }}/merge'
+      - name: Clang-Format Lint Verify
+        uses: DoozyX/clang-format-lint-action@v0.18
+        with:
+          source: '.'
+          extensions: 'h,c,inl'
+          clangFormatVersion: 10

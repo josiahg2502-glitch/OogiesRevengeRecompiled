@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: ODbL-1.0
+
+// Variables
+XREF_SYMBOL(_tls_array)                  // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(_tls_index)                  // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(g_DeviceType_Gamepad)        // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(g_DeviceType_IRDongle)       // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(g_DeviceType_Keyboard)       // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(g_DeviceType_Mouse)          //
+XREF_SYMBOL(g_DeviceType_MU)             // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(g_DeviceType_SBC)            //
+XREF_SYMBOL(g_DeviceTypeInfoTableBegin)  // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(g_DeviceTypeInfoTableEnd)    // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(g_XapiCurrentTopLevelFilter) // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(g_XapiAltLett_MU)            // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(g_XapiMountedMUs)            // initially set to XREF_ADDR_DERIVE
+
+// Offsets
+XREF_SYMBOL(XapiCurrentFiber_OFFSET)    // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(XapiLastErrorCode_OFFSET)   // initially set to XREF_ADDR_DERIVE
+XREF_SYMBOL(XapiThreadFiberData_OFFSET) // initially set to XREF_ADDR_DERIVE
+
+// Functions
+XREF_SYMBOL(IUsbInit_GetMaxDeviceTypeCount)
+XREF_SYMBOL(MU_Init)
+XREF_SYMBOL(_cinit)
+XREF_SYMBOL(_rtinit)
+XREF_SYMBOL(ConvertThreadToFiber)
+XREF_SYMBOL(CreateEventA)
+XREF_SYMBOL(CreateFiber)
+XREF_SYMBOL(CreateMutexA)
+XREF_SYMBOL(CreateThread)
+XREF_SYMBOL(DeleteFiber)
+XREF_SYMBOL(ExitThread)
+XREF_SYMBOL(GetExitCodeThread)
+XREF_SYMBOL(GetLastError)
+XREF_SYMBOL(GetOverlappedResult)
+XREF_SYMBOL(GetThreadPriority)
+XREF_SYMBOL(GetTimeZoneInformation)
+XREF_SYMBOL(GetTypeInformation)
+XREF_SYMBOL(GetTypeInformation2)
+XREF_SYMBOL(mainCRTStartup)
+XREF_SYMBOL(mainXapiStartup)
+XREF_SYMBOL(MoveFileA)
+XREF_SYMBOL(OpenEventA)
+XREF_SYMBOL(OutputDebugStringA)
+XREF_SYMBOL(OutputDebugStringW)
+XREF_SYMBOL(PulseEvent)
+XREF_SYMBOL(QueueUserAPC)
+XREF_SYMBOL(QueryPerformanceCounter)
+XREF_SYMBOL(RaiseException)
+XREF_SYMBOL(ResetEvent)
+XREF_SYMBOL(SetEvent)
+XREF_SYMBOL(SetLastError)
+XREF_SYMBOL(SetThreadPriority)
+XREF_SYMBOL(SetThreadPriorityBoost)
+XREF_SYMBOL(SignalObjectAndWait)
+XREF_SYMBOL(SwitchToFiber)
+XREF_SYMBOL(SwitchToThread)
+XREF_SYMBOL(timeKillEvent)
+XREF_SYMBOL(timeSetEvent)
+XREF_SYMBOL(UnhandledExceptionFilter)
+// Xapi prefix
+XREF_SYMBOL(XapiBootToDash)
+XREF_SYMBOL(XapiCallThreadNotifyRoutines)
+XREF_SYMBOL(XapiFormatObjectAttributes)
+XREF_SYMBOL(XapiInitProcess)
+XREF_SYMBOL(XapiMapLetterToDirectory)
+XREF_SYMBOL(XapiSelectCachePartition)
+XREF_SYMBOL(XapiSetLastNTError)
+XREF_SYMBOL(XapiThreadNotifyRoutineList)
+XREF_SYMBOL(XapiThreadStartup)
+// X prefix
+XREF_SYMBOL(XAutoPowerDownResetTimer)
+XREF_SYMBOL(XCalculateSignatureBegin)
+XREF_SYMBOL(XFormatUtilityDrive)
+XREF_SYMBOL(XGetDeviceChanges)
+XREF_SYMBOL(XGetDeviceEnumerationStatus)
+XREF_SYMBOL(XGetDevices)
+XREF_SYMBOL(XGetLaunchInfo)
+XREF_SYMBOL(XGetSectionSize)
+XREF_SYMBOL(XID_fCloseDevice)
+XREF_SYMBOL(XInitDevices)
+XREF_SYMBOL(XInputClose)
+XREF_SYMBOL(XInputGetCapabilities)
+XREF_SYMBOL(XInputGetDeviceDescription)
+XREF_SYMBOL(XInputGetState)
+XREF_SYMBOL(XInputOpen)
+XREF_SYMBOL(XInputPoll)
+XREF_SYMBOL(XInputSetLightgunCalibration)
+XREF_SYMBOL(XInputSetState)
+XREF_SYMBOL(XLaunchNewImageA)
+XREF_SYMBOL(XMountAlternateTitleA)
+XREF_SYMBOL(XMountMUA)
+XREF_SYMBOL(XMountMURootA)
+XREF_SYMBOL(XMountUtilityDrive)
+XREF_SYMBOL(XMUNameFromDriveLetter)
+XREF_SYMBOL(XMUPortFromDriveLetterA)
+XREF_SYMBOL(XMUSlotFromDriveLetterA)
+XREF_SYMBOL(XMUWriteNameToDriveLetter)
+XREF_SYMBOL(XReadMUMetaData)
+XREF_SYMBOL(XRegisterThreadNotifyRoutine)
+XREF_SYMBOL(XSetProcessQuantumLength)
+XREF_SYMBOL(XUnmountAlternateTitleA)
+XREF_SYMBOL(XUnmountMU)
+XREF_SYMBOL(XapiFiberStartup)

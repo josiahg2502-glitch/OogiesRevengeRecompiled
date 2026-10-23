@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: ODbL-1.0
+
+XREF_SYMBOL(XnInit)
+XREF_SYMBOL(WSAStartup)
+XREF_SYMBOL(XNetStartup)
+XREF_SYMBOL(XNetGetEthernetLinkStatus)
+XREF_SYMBOL(bind)
+XREF_SYMBOL(connect)
+XREF_SYMBOL(ioctlsocket)
+XREF_SYMBOL(listen)
+XREF_SYMBOL(recv)
+XREF_SYMBOL(send)
+XREF_SYMBOL(socket)

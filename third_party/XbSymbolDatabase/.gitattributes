@@ -1,0 +1,11 @@
+#REMINDER:
+# Must use same line for multiple changes, any further changes for same type of prefix are ignore for some reason.
+
+# Standard new line ending
+* text=auto
+*.c text eol=crlf
+*.h text eol=crlf
+
+# Github's linguist thinks *.inl files are C++, even rename to h extension thinks it is Objective-C.
+# Since it is not compiler dependent for .inl extension. Let's ignore what language it is in.
+*.inl text eol=crlf linguist-language=C -linguist-detectable

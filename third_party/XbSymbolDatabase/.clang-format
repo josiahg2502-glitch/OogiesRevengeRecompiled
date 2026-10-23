@@ -1,0 +1,20 @@
+---
+BasedOnStyle: LLVM
+AlignConsecutiveMacros: 'true'
+AlignEscapedNewlines: Left
+AllowShortBlocksOnASingleLine: 'false'
+AllowShortCaseLabelsOnASingleLine: 'false'
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+BinPackParameters: 'false'
+BreakBeforeBraces: Stroustrup
+ColumnLimit: '0'
+Cpp11BracedListStyle: 'false'
+IndentCaseLabels: 'true'
+IndentWidth: '4'
+MaxEmptyLinesToKeep: '2'
+PointerAlignment: Left
+SortIncludes: 'false'
+UseTab: Never
+
+...

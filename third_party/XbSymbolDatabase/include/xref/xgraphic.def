@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: ODbL-1.0
+
+// functions
+XREF_SYMBOL(XFONT_OpenBitmapFontFromMemory)
+XREF_SYMBOL(XGCompressRect)
+XREF_SYMBOL(XGIsSwizzledFormat)
+XREF_SYMBOL(XGSetIndexBufferHeader)
+XREF_SYMBOL(XGSetSurfaceHeader)
+XREF_SYMBOL(XGSetTextureHeader)
+XREF_SYMBOL(XGSetVertexBufferHeader)
+XREF_SYMBOL(XGSwizzleBox)
+XREF_SYMBOL(XGSwizzleRect)
+XREF_SYMBOL(XGUnswizzleBox)
+XREF_SYMBOL(XGUnswizzleRect)
+XREF_SYMBOL(XGWriteSurfaceOrTextureToXPR)

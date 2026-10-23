@@ -1,0 +1,37 @@
+name: Schedule Release
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '.github/*'
+      - '.github/*TEMPLATE/**'
+    tags:
+      - 'v*'
+  schedule:
+    - cron: '1 1 7 * *'
+
+jobs:
+  build:
+    name: GitHub CI
+    uses: ./.github/workflows/ci.yml
+  release:
+    name: Generate Release
+    needs: [build]
+    if: needs.build.outputs.do-release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      tag_name: ${{ needs.build.outputs.ver-cur }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get Artifacts
+        uses: actions/download-artifact@v4
+        # NOTE: We're downloading ALL artifacts.
+      - name: Prepare artifacts for release
+        run: | # download-artifact doesn't download a zip, so rezip it
+          7z a -mx1 "XbSymbolDatabase.zip" "./XbSymbolDatabase/*"
+      - name: Create Release
+        env:
+          GH_REPO: ${{ github.repository }} # https://github.com/cli/cli/issues/3556
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create ${{ env.tag_name }} XbSymbolDatabase.zip --title "${{ env.tag_name }}" --notes-file changelog/changelog --target $GITHUB_SHA

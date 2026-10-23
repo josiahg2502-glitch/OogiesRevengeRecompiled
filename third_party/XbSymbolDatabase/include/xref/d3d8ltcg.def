@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: ODbL-1.0
+
+// custom search (not for external project usage)
+XREF_SYMBOL(D3DDevice_SetRenderStateInline__GenericFragment)
+
+// TODO: Verify each xref's function match with d3d8.def's function xrefs.
+
+// functions
+XREF_SYMBOL(D3DDevice_SetTextureStageStateNotInline2)
+XREF_SYMBOL(D3D_KickOffAndWaitForIdle2)

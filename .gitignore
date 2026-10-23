@@ -1,0 +1,32 @@
+# game data: never in the repository
+Disc/
+hdd/
+saves/
+cache/
+
+# generated from the game's executable
+generated/
+symbols/*
+!symbols/manual_symbols.tsv
+
+# build output and tools
+build/
+build-xbsdb/
+build-test/
+build-logs/
+toolchain/
+__pycache__/
+
+# release output, player data and local working files
+build2/
+dist/
+UserData/
+screenshots/
+*.iso
+launcher/bin/
+launcher/obj/
+launcher/publish/
+team/
+.claude/
+.codex/
+graphify-out/

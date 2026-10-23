@@ -1,0 +1,172 @@
+name: GitHub CI
+
+on:
+  workflow_call:
+    outputs:
+      do-release:
+        value: ${{ jobs.semver.outputs.do-build == 'true' && jobs.semver.outputs.do-release == 'true' }}
+      ver-cur:
+        value: ${{ jobs.semver.outputs.ver-cur }}
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '.github/*'
+      - '.github/*TEMPLATE/**'
+    branches:
+      - '**'
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      - '.github/*'
+      - '.github/*TEMPLATE/**'
+env:
+  is_pr: ${{ startsWith(github.ref, 'refs/pull/') }}
+  repo_default: 'Cxbx-Reloaded/XbSymbolDatabase'
+
+jobs:
+  semver:
+    name: Generate Semver
+    runs-on: ubuntu-latest
+    outputs:
+      ver-prev: ${{ steps.semver-output.outputs.version_previous }}
+      ver-cur: ${{ steps.semver-output.outputs.version_current }}
+      # Hack method to generate true or false for jobs.
+      # Since job's "if" doesn't support env context.
+      do-build: ${{ steps.build-cond.outputs.do-build }}
+      do-release: ${{ github.repository == env.repo_default }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: RadWolfie/Semantic-Version-Action@main
+        id: semver-output
+        with:
+          repository: ${{ env.repo_default }}
+          version_major_init: 3
+          version_minor_init: 0
+      - name: Run Build Conditional
+        id: build-cond
+        run: |
+          if [ "true" == "${{ (github.event_name != 'schedule' && github.event_name != 'workflow_dispatch') || steps.semver-output.outputs.version_previous != steps.semver-output.outputs.version_current }}" ]
+          then
+            echo "do-build=true" >> $GITHUB_OUTPUT
+          else
+            echo "do-build=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Generate Changelog
+        if: steps.build-cond.outputs.do-build == 'true'
+        run: |
+          if [ "true" == "${{ env.is_pr }}" ]
+          then
+            git log --pretty=format:"%h: %s%n%w(0,11)%-b%n" ${{ steps.semver-output.outputs.version_previous }}..HEAD > changelog
+          else
+            git log --first-parent --pretty=format:"%h: %s%n%w(0,11)%-b%n" ${{ steps.semver-output.outputs.version_previous }}..HEAD > changelog
+          fi
+      # NOTE: Require to reduce workload from CI service from fetch whole git content.
+      - name: Upload Changelog
+        if: steps.build-cond.outputs.do-build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: changelog
+  matrix_setup:
+    name: Setup Builders
+    runs-on: ubuntu-latest
+    outputs:
+      builder: ${{steps.set-builder.outputs.result}}
+    steps:
+      - uses: actions/github-script@v7
+        id: set-builder
+        with:
+          script: |
+            const platforms = [
+                {"platform": "Windows", "folder": "win", "cmake-build-param": "-j $env:NUMBER_OF_PROCESSORS"},
+                {"platform": "Linux", "folder": "linux", "cmake-build-param": "-j $(nproc --all)", "cmake-generator": "-G \"Unix Makefiles\""},
+                {"platform": "macOS", "folder": "macos", "cmake-build-param": "-j $(sysctl -n hw.ncpu)"}
+            ];
+            let builder = [];
+            for (let build of platforms.values()) {
+              if (build.platform === "Windows") {
+                // always use the latest os
+                build["os"] = "windows-latest";
+                // create x86 build
+                build["arch"] = "x86";
+                build["cmake-generator"] = "-A Win32";
+                builder.push(Object.assign({}, build));
+                // create x64 build
+                build["arch"] = "x64";
+                build["cmake-generator"] = "-A x64";
+                builder.push(Object.assign({}, build));
+              }
+              if (build.platform === "Linux") {
+                // no other variant needed at this time
+                build["os"] = "ubuntu-latest";
+                build["arch"] = "x64";
+                builder.push(Object.assign({}, build));
+              }
+              if (build.platform === "macOS") {
+                // always use the latest os
+                build["os"] = "macos-latest";
+                // create x64 build
+                build["arch"] = "x64";
+                build["cmake-generator"] = "-G Xcode -DCMAKE_OSX_ARCHITECTURES=x86_64";
+                builder.push(Object.assign({}, build));
+                // create arm64 build
+                build["arch"] = "arm64";
+                build["cmake-generator"] = "-G Xcode -DCMAKE_OSX_ARCHITECTURES=arm64";
+                builder.push(Object.assign({}, build));
+              }
+            }
+            console.log(builder);
+            return builder;
+  build:
+    name: ${{ matrix.builder.platform }} (${{ matrix.builder.arch }}, ${{ matrix.configuration }})
+    runs-on: ${{ matrix.builder.os }}
+    needs: [semver, matrix_setup]
+    if: needs.semver.outputs.do-build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+        builder: ${{fromJSON(needs.matrix_setup.outputs.builder)}}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate CMake Files
+        # NOTES:
+        # -Werror=dev is used to validate CMakeLists.txt for any faults.
+        run: cmake -B build -Werror=dev ${{ matrix.builder.cmake-generator }}
+      - name: Build
+        run: cmake --build build --config ${{ matrix.configuration }} ${{ matrix.builder.cmake-build-param }}
+      - name: CTests
+        run: ctest --test-dir build --build-config ${{ matrix.configuration }} --verbose
+      - name: Copy Files
+        if: matrix.configuration == 'Release'
+        run: cmake --install build --config ${{ matrix.configuration }} --prefix upload/${{ matrix.builder.folder }}_${{ matrix.builder.arch }}
+      - name: Upload Build Artifact
+        if: matrix.configuration == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: XbSymbolDatabase-${{ matrix.builder.folder }}_${{ matrix.builder.arch }}
+          # roughly translate to upload/<platform_arch>/<bin | lib | include>/<anything in here and after>
+          path: upload/*/*/*
+          if-no-files-found: error
+      - name: Upload Misc Artifact
+        if: matrix.builder.cmake-generator == '-G "Unix Makefiles"' && matrix.configuration == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: XbSymbolDatabase-misc
+          path: |
+            README.md
+            LICENSE
+          if-no-files-found: error
+  merge:
+    name: Merge Artifacts
+    runs-on: ubuntu-latest
+    needs: [semver, build]
+    if: ${{ !cancelled() && needs.semver.outputs.do-build == 'true' }}
+    steps:
+      - uses: actions/upload-artifact/merge@v4
+        with:
+          name: XbSymbolDatabase
+          pattern: XbSymbolDatabase-*
+          delete-merged: true

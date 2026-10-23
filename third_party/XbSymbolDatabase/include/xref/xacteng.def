@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: ODbL-1.0
+
+// XACT
+// +s
+
+// functions
+// XACT prefix
+XREF_SYMBOL(XACT_CEngine_RegisterWaveBank)
+XREF_SYMBOL(XACT_CEngine_RegisterStreamedWaveBank)
+XREF_SYMBOL(XACT_CEngine_CreateSoundBank)
+XREF_SYMBOL(XACT_CEngine_DownloadEffectsImage)
+XREF_SYMBOL(XACT_CEngine_CreateSoundSource)
+XREF_SYMBOL(XACT_CSoundBank_GetSoundCueIndexFromFriendlyName)
+XREF_SYMBOL(XACT_CSoundBank_Play)
+XREF_SYMBOL(XACT_CEngine_RegisterNotification)
+XREF_SYMBOL(XACT_CEngine_GetNotification)
+XREF_SYMBOL(XACT_CEngine_UnRegisterWaveBank)
+XREF_SYMBOL(XACTEngineCreate)
+XREF_SYMBOL(XACTEngineDoWork)
+// IXACTEngine prefix
+XREF_SYMBOL(IXACTEngine_CreateSoundBank)
+XREF_SYMBOL(IXACTEngine_CreateSoundSource)
+XREF_SYMBOL(IXACTEngine_DownloadEffectsImage)
+XREF_SYMBOL(IXACTEngine_GetNotification)
+XREF_SYMBOL(IXACTEngine_RegisterNotification)
+XREF_SYMBOL(IXACTEngine_RegisterStreamedWaveBank)
+XREF_SYMBOL(IXACTEngine_RegisterWaveBank)
+XREF_SYMBOL(IXACTEngine_UnRegisterWaveBank)
+// IXACTSoundBank prefix
+XREF_SYMBOL(IXACTSoundBank_GetSoundCueIndexFromFriendlyName)
+XREF_SYMBOL(IXACTSoundBank_Play)
+XREF_SYMBOL(IXACTSoundBank_PlayEx)

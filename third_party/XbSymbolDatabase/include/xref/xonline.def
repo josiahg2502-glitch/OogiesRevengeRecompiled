@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: ODbL-1.0
+
+// +s
+
+XREF_SYMBOL(CXo_XOnlineLogon)
+XREF_SYMBOL(CXo_XOnlineMatchSearch)
+XREF_SYMBOL(CXo_XOnlineMatchSearchResultsLen)
+XREF_SYMBOL(CXo_XOnlineMatchSearchGetResults)
+XREF_SYMBOL(CXo_XOnlineMatchSessionUpdate)
+XREF_SYMBOL(CXo_XOnlineMatchSessionCreate)
+XREF_SYMBOL(XOnlineLogon)
+XREF_SYMBOL(XOnlineMatchSearch)
+XREF_SYMBOL(XOnlineMatchSearchGetResults)
+XREF_SYMBOL(XOnlineMatchSearchResultsLen)
+XREF_SYMBOL(XOnlineMatchSessionCreate)
+XREF_SYMBOL(XOnlineMatchSessionUpdate)
+XREF_SYMBOL(XoUpdateLaunchNewImageInternal)

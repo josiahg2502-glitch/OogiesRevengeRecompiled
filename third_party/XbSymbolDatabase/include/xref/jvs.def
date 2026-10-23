@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: ODbL-1.0
+
+// variables
+XREF_SYMBOL(JVS_SendCommand_String)
+XREF_SYMBOL(JvsBACKUP_Read_String)
+XREF_SYMBOL(JvsBACKUP_Write_String)
+XREF_SYMBOL(JvsEEPROM_Read_String)
+XREF_SYMBOL(JvsEEPROM_Write_String)
+XREF_SYMBOL(JvsFirmwareDownload_String)
+XREF_SYMBOL(JvsFirmwareUpload_String)
+XREF_SYMBOL(JvsNodeReceivePacket_String)
+XREF_SYMBOL(JvsNodeSendPacket_String)
+XREF_SYMBOL(JvsRTC_Read_String)
+XREF_SYMBOL(JvsRTC_Write_String)
+XREF_SYMBOL(JvsScFirmwareDownload_String)
+XREF_SYMBOL(JvsScFirmwareUpload_String)
+XREF_SYMBOL(JvsScReceiveMidi_String)
+XREF_SYMBOL(JvsScReceiveRs323c_String)
+XREF_SYMBOL(JvsScSendMidi_String)
+XREF_SYMBOL(JvsScSendRs323c_String)
+
+// derived variables
+XREF_SYMBOL(JVS_g_pPINSA)
+XREF_SYMBOL(JVS_g_pPINSB)
+
+// functions
+XREF_SYMBOL(JVS_SendCommand)
+XREF_SYMBOL(JvsBACKUP_Read)
+XREF_SYMBOL(JvsBACKUP_Write)
+XREF_SYMBOL(JvsEEPROM_Read)
+XREF_SYMBOL(JvsEEPROM_Write)
+XREF_SYMBOL(JvsFirmwareDownload)
+XREF_SYMBOL(JvsFirmwareUpload)
+XREF_SYMBOL(JvsNodeReceivePacket)
+XREF_SYMBOL(JvsNodeSendPacket)
+XREF_SYMBOL(JvsRTC_Read)
+XREF_SYMBOL(JvsRTC_Write)
+XREF_SYMBOL(JvsScFirmwareDownload)
+XREF_SYMBOL(JvsScFirmwareUpload)
+XREF_SYMBOL(JvsScReceiveMidi)
+XREF_SYMBOL(JvsScReceiveRs323c)
+XREF_SYMBOL(JvsScSendMidi)
+XREF_SYMBOL(JvsScSendRs323c)
